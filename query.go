@@ -252,31 +252,69 @@ func translatePredicate(q query.Predicate) (sqlQuery string, sqlParams []interfa
 	return sqlQuery, sqlParams, nil
 }
 
+func checkType(validator schema.FieldValidator) string {
+    switch validator.(type) {
+		case *schema.String:
+			f := validator.(*schema.String)
+            if f.MaxLen > 200 {
+                return "%s LONGTEXT"
+            } else {
+                q := "%s VARCHAR"
+                if f.MaxLen > 0 {
+                    q += fmt.Sprintf("(%d)", f.MaxLen)
+                } else {
+                    q += "(10000)"
+                }
+                return q
+			}
+		case *schema.Integer:  return "%s INTEGER"
+		case *schema.Float:    return "%s FLOAT"
+		case *schema.Bool:     return "%s BIT(1)"
+		case *schema.Time:     return "%s TIMESTAMP"
+		case *schema.URL:      return "%s VARCHAR"
+		case *schema.Password: return "%s VARCHAR"
+        case *Table: return ","
+		case *schema.Reference:
+            r := validator.(*schema.Reference)
+            if r == nil { return "" }
+            sv := r.SchemaValidator
+            if sv == nil { return "" }
+            id := sv.GetField("id")
+            table := sv.GetField("table")
+            q := ""
+            if id != nil {
+                q = checkType(id.Validator)
+                if table != nil {
+                    return fmt.Sprintf("%s, FOREIGN KEY (%%s) REFERENCES %s(id)", q, table.Default)
+                }
+            }
+            // return fmt.Sprintf("%q", reflect.TypeOf(id.Validator))
+            // return checkType(id.Validator)
+            /*
+            for name, f := range sv.Fields {
+                if name == "id" {
+                }
+            }
+            */
+            return q
+		default: return ""
+	}
+}
+
 func buildSchemaQuery(s *schema.Schema) (sqlQuery string, sqlParams []interface{}, err error) {
 	sqlQuery = "etag VARCHAR(512),"
 	for fieldName, field := range s.Fields {
-		switch field.Validator.(type) {
-		case *schema.String:
-			f := field.Validator.(*schema.String)
-			sqlQuery += fmt.Sprintf("%s VARCHAR", fieldName)
-			if f.MaxLen > 0 {
-				sqlQuery += fmt.Sprintf("(%d)", f.MaxLen)
-			}
-		case *schema.Integer:
-			sqlQuery += fmt.Sprintf("%s INTEGER", fieldName)
-		case *schema.Float:
-			sqlQuery += fmt.Sprintf("%s FLOAT", fieldName)
-		case *schema.Bool:
-			sqlQuery += fmt.Sprintf("%s BIT(1)", fieldName)
-		case *schema.Time:
-			sqlQuery += fmt.Sprintf("%s TIMESTAMP", fieldName)
-		case *schema.URL:
-			sqlQuery += fmt.Sprintf("%s VARCHAR", fieldName)
-		default:
-			return "", []interface{}{}, resource.ErrNotImplemented
-		}
-		sqlQuery += ","
-	}
+        fieldType := checkType(field.Validator)
+        if (len(fieldType) == 0) { return "", []interface{}{}, resource.ErrNotImplemented }
+        if (fieldType != ",") {
+            if (strings.Count(fieldType, "%") == 2) {
+                sqlQuery += fmt.Sprintf(fieldType, fieldName, fieldName);
+            } else {
+                sqlQuery += fmt.Sprintf(fieldType, fieldName);
+            }
+            sqlQuery += ","
+        }
+    }
 
 	return sqlQuery[:len(sqlQuery)-1], []interface{}{}, nil
 }

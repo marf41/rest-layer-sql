@@ -1,3 +1,38 @@
+# Fork changes:
+
+ - String fields are treated as LONGTEXT, when MaxLen is greater than 200,
+ - Password fields added (as VARCHAR),
+ - Reference validator support.
+
+## References
+
+You need to set Validator's `SchemaValidator` to referenced schema:
+
+```go
+Validator: &schema.Reference{ Path: "users", SchemaValidator: user } },
+```
+### Constraint
+
+This is kind of hack. As it is hard to pass values to query builder, I decided to add new `Validator` for this.
+
+To create `FOREIGN KEY` constraint, you need to put `table` field in targeted schema, setting `Default` to target table, 
+with `Table` validator.
+This works only for `id` field.
+
+```go
+"table": { Hidden: true, ReadOnly: true, Default: "users_table", Validator: &sqlStorage.Table{} },
+```
+
+This should create:
+
+```sql
+FOREIGN KEY (user_id) REFERENCES users_table(id)
+```
+
+Original README below.
+
+---
+
 # Golang REST Layer SQL Storage Handler
 
 This [REST Layer](https://github.com/rs/rest-layer) resource storage backend stores data in a SQL Database using [database/sql](https://golang.org/pkg/database/sql/).
@@ -5,7 +40,7 @@ This [REST Layer](https://github.com/rs/rest-layer) resource storage backend sto
 ## Usage
 
 ```go
-import "github.com/apuigsech/rest-layer-sql"
+import "github.com/marf41/rest-layer-sql"
 ```
 
 Create a resource storage handler with a given SQL driver, source and table:
